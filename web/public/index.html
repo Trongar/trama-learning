@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1e9">
+  <meta name="description" content="Trama convierte tus metas en rutas de aprendizaje propias y privadas.">
+  <title>Trama · aprende a tu manera</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Trama, inicio"><span class="brand-mark">t</span><span>Trama<span class="brand-dot">.</span></span></a>
+    <span class="header-note">Aprender con intención</span>
+    <div class="account-controls" id="account-controls" hidden>
+      <span id="account-email" class="account-email"></span>
+      <button class="button button-secondary logout-button" id="logout-button" type="button">Cerrar sesión</button>
+    </div>
+  </header>
+  <main id="main" class="page-wrap">
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <section id="auth-screen" class="welcome-grid" aria-labelledby="welcome-title">
+      <div class="welcome-copy">
+        <p class="eyebrow"><span class="eyebrow-line"></span> APRENDIZAJE CON PROPÓSITO</p>
+        <h1 id="welcome-title">Lo que quieres aprender merece <em>un camino propio.</em></h1>
+        <p class="intro">Empieza con una meta. Trama la transforma en pasos pequeños para que puedas comprender, practicar y ver tu avance.</p>
+        <div class="promise-list">
+          <div class="promise-item"><span class="promise-number">01</span><span>Parte de lo que ya sabes</span></div>
+          <div class="promise-item"><span class="promise-number">02</span><span>Conecta conceptos, no solo datos</span></div>
+          <div class="promise-item"><span class="promise-number">03</span><span>Practica y comprueba tu progreso</span></div>
+        </div>
+        <div class="demo-callout"><span class="demo-icon" aria-hidden="true">✳</span><p><strong>Versión de prueba con cuentas independientes.</strong><br>Cada persona debe crear su propia cuenta. Sus rutas y avances quedan separados.</p></div>
+      </div>
+      <section class="goal-card" aria-labelledby="auth-title">
+        <div class="card-kicker"><span class="status-dot"></span> TU ESPACIO PRIVADO</div>
+        <h2 id="auth-title">Inicia sesión</h2>
+        <p class="form-hint" id="auth-hint">Entra a tu cuenta para continuar tu ruta de aprendizaje.</p>
+        <div id="auth-error" class="form-error" role="alert" hidden></div>
+        <form id="auth-form" class="goal-form">
+          <label for="email">Correo electrónico</label>
+          <input id="email" name="email" type="email" maxlength="254" required autocomplete="email">
+          <label for="password">Contraseña</label>
+          <input id="password" name="password" type="password" minlength="8" required autocomplete="current-password">
+          <button class="button button-primary" id="auth-submit" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
+        </form>
+        <p class="auth-switch-line" id="auth-switch-line">¿Primera vez en Trama?</p>
+        <button class="button button-secondary auth-switch" id="auth-switch" type="button">Crear una cuenta personal</button>
+        <p class="privacy-note">Usa una cuenta distinta por persona; no compartas tu contraseña. Prototipo de prueba, no ingreses información sensible.</p>
+      </section>
+    </section>
+
+    <section id="workspace" hidden aria-labelledby="workspace-title">
+      <div class="workspace-heading">
+        <div>
+          <p class="eyebrow"><span class="eyebrow-line"></span> TU ESPACIO PRIVADO</p>
+          <h1 id="workspace-title">Tus rutas, <em>a tu manera.</em></h1>
+          <p class="intro compact">Tus metas y avances están ligados a tu cuenta de PocketBase. Otras cuentas no pueden verlos.</p>
+        </div>
+        <span class="time-chip">Sesión personal · privada</span>
+      </div>
+      <div class="demo-callout privacy-banner"><span class="demo-icon" aria-hidden="true">✳</span><p><strong>Ruta inicial lista para probar.</strong><br>Al crear tu cuenta recibes una ruta de demostración propia. Tus amistades deben registrarse con sus propias cuentas.</p></div>
+      <section class="workspace-grid">
+        <section class="goal-card" aria-labelledby="new-goal-title">
+          <div class="card-kicker"><span class="status-dot"></span> NUEVA RUTA</div>
+          <h2 id="new-goal-title">¿Qué quieres aprender?</h2>
+          <p class="form-hint">Crea otro objetivo en tu espacio.</p>
+          <form id="goal-form" class="goal-form">
+            <label for="domain">Tema o habilidad</label>
+            <input id="domain" name="domain" type="text" maxlength="100" placeholder="Ej. álgebra, inglés, fotografía" required>
+            <label for="level">¿Cuál es tu nivel actual?</label>
+            <select id="level" name="level" required>
+              <option value="inicial">Estoy empezando</option>
+              <option value="intermedio">Ya conozco lo básico</option>
+              <option value="avanzado">Quiero profundizar</option>
+            </select>
+            <label for="purpose">¿Para qué quieres aprenderlo?</label>
+            <textarea id="purpose" name="purpose" rows="2" maxlength="240" placeholder="Ej. para resolver problemas de mi trabajo" required></textarea>
+            <label for="minutes">Tiempo disponible por semana</label>
+            <div class="input-with-unit"><input id="minutes" name="minutes_per_week" type="number" min="10" max="10080" step="10" value="90" required><span>min / semana</span></div>
+            <button class="button button-primary" type="submit">Crear mi ruta <span aria-hidden="true">→</span></button>
+          </form>
+        </section>
+        <section class="routes-panel" aria-labelledby="routes-title">
+          <div class="section-heading"><div><p class="eyebrow"><span class="eyebrow-line"></span> TU BIBLIOTECA</p><h2 id="routes-title">Mis rutas</h2></div><span class="map-count" id="route-count"></span></div>
+          <div id="goal-list" class="goal-list" aria-live="polite"></div>
+        </section>
+      </section>
+      <section id="goal-detail" class="goal-detail" hidden aria-live="polite"></section>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <span>Trama <span aria-hidden="true">·</span> aprender es conectar ideas</span>
+    <span class="footer-note">Prototipo en construcción · evaluación demostrativa, no IA</span>
+  </footer>
+</body>
+</html>
