@@ -1,306 +1,189 @@
 package main
 
 import (
-	"bytes"
-	"crypto/rand"
 	"embed"
-	"encoding/hex"
-	"fmt"
-	"html/template"
+	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"sync"
-	"time"
 	"unicode"
+
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+
+	_ "edg-learning-mvp/migrations"
 )
 
-//go:embed web/*
-var webFiles embed.FS
+//go:embed web/public/*
+var publicFiles embed.FS
 
 type Assessment struct {
-	Score       float64
-	Correct     bool
-	Explanation string
-	Provider    string
-	Model       string
+	Score       float64 `json:"score"`
+	Correct     bool    `json:"correct"`
+	Explanation string  `json:"explanation"`
+	Provider    string  `json:"provider"`
+	Model       string  `json:"model"`
 }
 
-type Exercise struct {
-	ID        string
-	ConceptID string
-	Prompt    string
-	Expected  string
+type attemptRequest struct {
+	Index  int    `json:"index"`
+	Answer string `json:"answer"`
 }
 
-type Concept struct {
-	ID         string
-	Name       string
-	Summary    string
-	Content    string
-	ExerciseID string
-	Mastery    float64
-}
-
-type Goal struct {
-	ID             string
-	Domain         string
-	Level          string
-	Purpose        string
-	MinutesPerWeek int
-	Progress       float64
-	Concepts       []Concept
-}
-
-type pageData struct {
-	Title      string
-	Error      string
-	Domain     string
-	Purpose    string
-	Level      string
-	Minutes    int
-	Goal       Goal
-	Concept    Concept
-	Exercise   Exercise
-	Assessment Assessment
-	NextURL    string
-}
-
-type memoryStore struct {
-	goals     map[string]Goal
-	exercises map[string]Exercise
-}
-
-type app struct {
-	mu        sync.RWMutex
-	store     memoryStore
-	templates *template.Template
-}
-
-func newApp() *app {
-	views := template.Must(template.New("views").Funcs(template.FuncMap{
-		"mul": func(value float64, factor int) float64 { return value * float64(factor) },
-		"add": func(value, delta int) int { return value + delta },
-	}).ParseFS(webFiles, "web/*.html"))
-	return &app{
-		store:     memoryStore{goals: make(map[string]Goal), exercises: make(map[string]Exercise)},
-		templates: views,
-	}
-}
-
-func (a *app) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", a.home)
-	mux.HandleFunc("POST /goals", a.createGoal)
-	mux.HandleFunc("GET /goals/{id}", a.showGoal)
-	mux.HandleFunc("GET /concepts/{id}", a.showLesson)
-	mux.HandleFunc("POST /exercises/{id}/attempts", a.createAttempt)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
+func newPocketBase(dataDir string) *pocketbase.PocketBase {
+	pb := pocketbase.NewWithConfig(pocketbase.Config{
+		DefaultDataDir:  dataDir,
+		HideStartBanner: true,
 	})
-	static, err := fs.Sub(webFiles, "web")
-	if err != nil {
-		panic(err)
-	}
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
-	return securityHeaders(mux)
-}
+	migratecmd.MustRegister(pb, pb.RootCmd, migratecmd.Config{})
 
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self' https://unpkg.com; connect-src 'self'; img-src 'self' data:")
-		next.ServeHTTP(w, r)
+	pb.OnRecordAfterCreateSuccess("users").BindFunc(func(e *core.RecordEvent) error {
+		if err := createInitialLearningSession(e.App, e.Record.Id); err != nil {
+			return err
+		}
+		return e.Next()
 	})
+
+	pb.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		public, err := fsSubPublic()
+		if err != nil {
+			return err
+		}
+		e.Router.BindFunc(func(event *core.RequestEvent) error {
+			event.Response.Header().Set("Cache-Control", "no-store")
+			if !strings.HasPrefix(event.Request.URL.Path, "/_/" ) {
+				event.Response.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+				event.Response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+			}
+			return event.Next()
+		})
+		e.Router.GET("/healthz", func(event *core.RequestEvent) error {
+			return event.String(http.StatusOK, "ok\n")
+		})
+		e.Router.POST("/api/trama/goals/{id}/attempts", createAttemptRoute).Bind(apis.RequireAuth(), apis.BodyLimit(16*1024))
+		e.Router.GET("/{path...}", apis.Static(public, true))
+		return e.Next()
+	})
+	return pb
 }
 
-func (a *app) home(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	a.render(w, http.StatusOK, "home.html", pageData{Title: "Aprende a tu manera", Level: "inicial", Minutes: 90})
+func fsSubPublic() (fs.FS, error) {
+	return fs.Sub(publicFiles, "web/public")
 }
 
-func (a *app) createGoal(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := r.ParseForm(); err != nil {
-		a.render(w, http.StatusBadRequest, "home.html", pageData{Title: "Aprende a tu manera", Error: "No pudimos leer el formulario. Inténtalo de nuevo."})
-		return
-	}
-	domain := strings.TrimSpace(r.FormValue("domain"))
-	level := strings.TrimSpace(r.FormValue("level"))
-	purpose := strings.TrimSpace(r.FormValue("purpose"))
-	minutes, err := strconv.Atoi(r.FormValue("minutes_per_week"))
-	if domain == "" || len([]rune(domain)) > 100 {
-		a.render(w, http.StatusBadRequest, "home.html", pageData{Title: "Aprende a tu manera", Error: "Escribe el tema que quieres aprender (máximo 100 caracteres).", Domain: domain, Purpose: purpose, Level: level})
-		return
-	}
-	if purpose == "" || len([]rune(purpose)) > 240 {
-		a.render(w, http.StatusBadRequest, "home.html", pageData{Title: "Aprende a tu manera", Error: "Cuéntanos para qué quieres aprenderlo (máximo 240 caracteres).", Domain: domain, Purpose: purpose, Level: level})
-		return
-	}
-	if level != "inicial" && level != "intermedio" && level != "avanzado" {
-		a.render(w, http.StatusBadRequest, "home.html", pageData{Title: "Aprende a tu manera", Error: "Elige un nivel disponible.", Domain: domain, Purpose: purpose, Level: "inicial"})
-		return
-	}
-	if err != nil || minutes < 10 || minutes > 10080 {
-		a.render(w, http.StatusBadRequest, "home.html", pageData{Title: "Aprende a tu manera", Error: "Indica entre 10 y 10,080 minutos disponibles por semana.", Domain: domain, Purpose: purpose, Level: level})
-		return
-	}
-
-	goalID, err := newID("goal")
+func createInitialLearningSession(app core.App, userID string) error {
+	collection, err := app.FindCollectionByNameOrId("learning_goals")
 	if err != nil {
-		http.Error(w, "No se pudo crear el objetivo.", http.StatusInternalServerError)
-		return
+		return err
 	}
-	concepts := make([]Concept, 3)
-	labels := []string{"Fundamentos de " + domain, "Ideas clave", "Aplicación práctica"}
-	summaries := []string{"Ubica lo que ya sabes y construye una base.", "Conecta las ideas importantes del tema.", "Usa lo aprendido para acercarte a tu objetivo."}
-	for i := range concepts {
-		conceptID, idErr := newID("concept")
-		exerciseID, exerciseErr := newID("exercise")
-		if idErr != nil || exerciseErr != nil {
-			http.Error(w, "No se pudo crear la ruta.", http.StatusInternalServerError)
-			return
-		}
-		concepts[i] = Concept{
-			ID: conceptID, Name: labels[i], Summary: summaries[i],
-			Content:    fmt.Sprintf("Esta lección de demostración te invita a explorar %s desde tu nivel %s.\n\nPiensa qué conceptos ya reconoces, cómo se relacionan y qué ejemplo real te ayudaría a avanzar hacia: %s. El contenido específico del tema se conectará con el proveedor de aprendizaje en una siguiente fase.", domain, level, purpose),
-			ExerciseID: exerciseID,
-		}
-	}
-	goal := Goal{ID: goalID, Domain: domain, Level: level, Purpose: purpose, MinutesPerWeek: minutes, Concepts: concepts}
-	a.mu.Lock()
-	a.store.goals[goalID] = goal
-	for _, concept := range concepts {
-		a.store.exercises[concept.ExerciseID] = Exercise{
-			ID: concept.ExerciseID, ConceptID: concept.ID,
-			Prompt:   fmt.Sprintf("Explica una idea importante de %s y cómo te acerca a tu objetivo: %s.", domain, purpose),
-			Expected: domain + " " + purpose,
-		}
-	}
-	a.mu.Unlock()
-	http.Redirect(w, r, "/goals/"+goalID, http.StatusSeeOther)
+
+	goal := core.NewRecord(collection)
+	goal.Set("user", userID)
+	goal.Set("domain", "Aprender a aprender")
+	goal.Set("level", "inicial")
+	goal.Set("purpose", "Explorar Trama con una ruta privada de demostración.")
+	goal.Set("minutes_per_week", 90)
+	goal.Set("status", "active")
+	goal.Set("progress", 0)
+	goal.Set("path", initialPath("Aprender a aprender", "Explorar Trama con una ruta privada de demostración.", "inicial"))
+	return app.Save(goal)
 }
 
-func (a *app) showGoal(w http.ResponseWriter, r *http.Request) {
-	a.mu.RLock()
-	goal, ok := a.store.goals[r.PathValue("id")]
-	if ok {
-		goal.Concepts = append([]Concept(nil), goal.Concepts...)
+func initialPath(domain, purpose, level string) []map[string]any {
+	return []map[string]any{
+		{
+			"name":    "Una meta que importa",
+			"summary": "Conecta el tema con algo que sí quieres lograr.",
+			"content": "Empieza por tu objetivo: " + purpose + " Observa qué sabes ya y qué te gustaría comprender mejor.",
+			"prompt":  "¿Qué te gustaría comprender de " + domain + " y por qué te importa?",
+			"mastery": 0.0,
+		},
+		{
+			"name":    "Ideas que se conectan",
+			"summary": "Busca relaciones entre conceptos, no solo definiciones.",
+			"content": "En el nivel " + level + ", elige dos ideas de " + domain + " y explica cómo una ayuda a entender la otra.",
+			"prompt":  "¿Qué dos ideas de " + domain + " se relacionan y cómo?",
+			"mastery": 0.0,
+		},
+		{
+			"name":    "Una aplicación práctica",
+			"summary": "Lleva lo aprendido a un ejemplo cercano.",
+			"content": "Piensa en una situación cotidiana en la que podrías usar " + domain + ". Describe un primer paso y qué aprenderías al intentarlo.",
+			"prompt":  "Describe una aplicación práctica de " + domain + " vinculada con tu objetivo.",
+			"mastery": 0.0,
+		},
 	}
-	a.mu.RUnlock()
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	a.render(w, http.StatusOK, "goal.html", pageData{Title: goal.Domain, Goal: goal})
 }
 
-func (a *app) showLesson(w http.ResponseWriter, r *http.Request) {
-	conceptID := r.PathValue("id")
-	a.mu.RLock()
-	var goal Goal
-	var concept Concept
-	found := false
-	for _, candidate := range a.store.goals {
-		for _, item := range candidate.Concepts {
-			if item.ID == conceptID {
-				goal, concept, found = candidate, item, true
-				break
+func createAttemptRoute(e *core.RequestEvent) error {
+	var input attemptRequest
+	if err := e.BindBody(&input); err != nil {
+		return e.BadRequestError("No pudimos leer tu respuesta.", err)
+	}
+	input.Answer = strings.TrimSpace(input.Answer)
+	if input.Index < 0 || len([]rune(input.Answer)) == 0 || len([]rune(input.Answer)) > 4000 {
+		return e.BadRequestError("La respuesta o el paso no son válidos.", nil)
+	}
+
+	var assessment Assessment
+	var progress float64
+	err := e.App.RunInTransaction(func(tx core.App) error {
+		goal, err := tx.FindRecordById("learning_goals", e.Request.PathValue("id"))
+		if err != nil || goal.GetString("user") != e.Auth.Id {
+			return errGoalNotFound
+		}
+		encodedPath, err := json.Marshal(goal.Get("path"))
+		if err != nil {
+			return err
+		}
+		var path []map[string]any
+		if err := json.Unmarshal(encodedPath, &path); err != nil {
+			return err
+		}
+		if input.Index >= len(path) {
+			return errInvalidPathIndex
+		}
+
+		assessment = evaluateAnswer(goal.GetString("domain")+" "+goal.GetString("purpose"), input.Answer)
+		path[input.Index]["mastery"] = assessment.Score
+		path[input.Index]["last_answer"] = input.Answer
+		path[input.Index]["feedback"] = assessment.Explanation
+		for _, concept := range path {
+			if mastery, ok := concept["mastery"].(float64); ok {
+				progress += mastery
 			}
 		}
-		if found {
-			break
-		}
+		progress /= float64(len(path))
+		goal.Set("path", path)
+		goal.Set("progress", progress)
+		return tx.Save(goal)
+	})
+	if errors.Is(err, errGoalNotFound) {
+		return e.NotFoundError("Learning session not found", err)
 	}
-	if found {
-		goal.Concepts = append([]Concept(nil), goal.Concepts...)
+	if errors.Is(err, errInvalidPathIndex) {
+		return e.BadRequestError("The requested learning step does not exist.", err)
 	}
-	exercise := a.store.exercises[concept.ExerciseID]
-	a.mu.RUnlock()
-	if !found {
-		http.NotFound(w, r)
-		return
+	if err != nil {
+		return e.InternalServerError("Could not save this attempt.", err)
 	}
-	a.render(w, http.StatusOK, "lesson.html", pageData{Title: concept.Name, Goal: goal, Concept: concept, Exercise: exercise})
+	return e.JSON(http.StatusOK, map[string]any{
+		"assessment": assessment,
+		"progress":   progress,
+	})
 }
 
-func (a *app) createAttempt(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "No pudimos leer tu respuesta.", http.StatusBadRequest)
-		return
-	}
-	answer := strings.TrimSpace(r.FormValue("answer"))
-	if answer == "" || len([]rune(answer)) > 4000 {
-		http.Error(w, "Escribe una respuesta de hasta 4,000 caracteres.", http.StatusBadRequest)
-		return
-	}
-	a.mu.Lock()
-	exercise, ok := a.store.exercises[r.PathValue("id")]
-	if !ok {
-		a.mu.Unlock()
-		http.NotFound(w, r)
-		return
-	}
-	assessment := (mockEvaluator{}).evaluate(exercise.Expected, answer)
-	var goal Goal
-	var concept Concept
-	for goalID, candidate := range a.store.goals {
-		for i, item := range candidate.Concepts {
-			if item.ID == exercise.ConceptID {
-				item.Mastery = assessment.Score
-				candidate.Concepts[i] = item
-				candidate.Progress = 0
-				for _, c := range candidate.Concepts {
-					candidate.Progress += c.Mastery
-				}
-				candidate.Progress /= float64(len(candidate.Concepts))
-				a.store.goals[goalID] = candidate
-				goal, concept = candidate, item
-				break
-			}
-		}
-	}
-	a.mu.Unlock()
-	if concept.ID == "" {
-		http.NotFound(w, r)
-		return
-	}
-	a.render(w, http.StatusOK, "result.html", pageData{Title: "Tu respuesta", Goal: goal, Concept: concept, Assessment: assessment, NextURL: "/goals/" + goal.ID})
-}
+var (
+	errGoalNotFound     = errors.New("learning session not found")
+	errInvalidPathIndex = errors.New("learning step index is invalid")
+)
 
-func (a *app) render(w http.ResponseWriter, status int, name string, data pageData) {
-	var output bytes.Buffer
-	if err := a.templates.ExecuteTemplate(&output, name, data); err != nil {
-		log.Printf("render %s failed: %v", name, err)
-		http.Error(w, "No se pudo mostrar esta página.", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_, _ = output.WriteTo(w)
-}
-
-func newID(prefix string) (string, error) {
-	var raw [12]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", err
-	}
-	return prefix + "_" + hex.EncodeToString(raw[:]), nil
-}
-
-type mockEvaluator struct{}
-
-func (mockEvaluator) evaluate(expected, answer string) Assessment {
+func evaluateAnswer(expected, answer string) Assessment {
 	expectedWords := words(expected)
 	answerWords := words(answer)
 	matches := 0
@@ -326,18 +209,20 @@ func (mockEvaluator) evaluate(expected, answer string) Assessment {
 
 func words(text string) map[string]bool {
 	result := make(map[string]bool)
-	for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }) {
+	for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
 		result[word] = true
 	}
 	return result
 }
 
 func main() {
-	address := os.Getenv("EDG_ADDR")
-	if address == "" {
-		address = ":8080"
+	dataDir := os.Getenv("TRAMA_DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./pb_data"
 	}
-	server := &http.Server{Addr: address, Handler: newApp().Handler(), ReadHeaderTimeout: 5 * time.Second}
-	log.Printf("Trama listening on %s", address)
-	log.Fatal(server.ListenAndServe())
+	if err := newPocketBase(dataDir).Start(); err != nil {
+		log.Fatal(err)
+	}
 }

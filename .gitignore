@@ -1,0 +1,7 @@
+pb_data/
+/data/
+trama
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
