@@ -1,0 +1,145 @@
+{{define "shell-head" -}}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1e9">
+  <title>{{.Title}} · Trama</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Trama, inicio"><span class="brand-mark">t</span><span>Trama<span class="brand-dot">.</span></span></a>
+    <span class="header-note">Aprender con intención</span>
+    <a class="header-link" href="/">Mi espacio <span aria-hidden="true">↗</span></a>
+  </header>
+  <main id="main" class="page-wrap" hx-boost="true">
+{{end}}
+
+{{define "shell-foot" -}}
+  </main>
+  <footer class="site-footer">
+    <span>Trama <span aria-hidden="true">·</span> aprender es conectar ideas</span>
+    <span class="footer-note">Un prototipo en construcción</span>
+  </footer>
+</body>
+</html>
+{{end}}
+
+{{define "home.html" -}}
+{{template "shell-head" .}}
+<section class="welcome-grid">
+  <div class="welcome-copy">
+    <p class="eyebrow"><span class="eyebrow-line"></span> APRENDIZAJE CON PROPÓSITO</p>
+    <h1>Lo que quieres aprender merece <em>un camino propio.</em></h1>
+    <p class="intro">Empieza con una meta. Trama la transforma en pasos pequeños para que puedas comprender, practicar y ver tu avance.</p>
+    <div class="promise-list">
+      <div class="promise-item"><span class="promise-number">01</span><span>Parte de lo que ya sabes</span></div>
+      <div class="promise-item"><span class="promise-number">02</span><span>Conecta conceptos, no solo datos</span></div>
+      <div class="promise-item"><span class="promise-number">03</span><span>Practica y comprueba tu progreso</span></div>
+    </div>
+    <div class="demo-callout"><span class="demo-icon" aria-hidden="true">✳</span><p><strong>Estás viendo una versión de prueba.</strong><br>La ruta y la evaluación son demostrativas; todavía no usan IA.</p></div>
+  </div>
+  <section class="goal-card" aria-labelledby="form-title">
+    <div class="card-kicker"><span class="status-dot"></span> TU PRIMER OBJETIVO</div>
+    <h2 id="form-title">¿Qué quieres aprender?</h2>
+    <p class="form-hint">No necesitas tener todo resuelto. Empezamos con una idea.</p>
+    {{if .Error}}<div class="form-error" role="alert">{{.Error}}</div>{{end}}
+    <form action="/goals" method="post" class="goal-form">
+      <label for="domain">Tema o habilidad</label>
+      <input id="domain" name="domain" type="text" maxlength="100" placeholder="Ej. álgebra, inglés, fotografía" value="{{.Domain}}" required autocomplete="off">
+      <label for="level">¿Cuál es tu nivel actual?</label>
+      <select id="level" name="level" required>
+        <option value="inicial" {{if eq .Level "inicial"}}selected{{end}}>Estoy empezando</option>
+        <option value="intermedio" {{if eq .Level "intermedio"}}selected{{end}}>Ya conozco lo básico</option>
+        <option value="avanzado" {{if eq .Level "avanzado"}}selected{{end}}>Quiero profundizar</option>
+      </select>
+      <label for="purpose">¿Para qué quieres aprenderlo?</label>
+      <textarea id="purpose" name="purpose" rows="2" maxlength="240" placeholder="Ej. para resolver problemas de mi trabajo" required>{{.Purpose}}</textarea>
+      <label for="minutes">Tiempo disponible por semana</label>
+      <div class="input-with-unit"><input id="minutes" name="minutes_per_week" type="number" min="10" max="10080" step="10" value="{{if .Minutes}}{{.Minutes}}{{else}}90{{end}}" required><span>min / semana</span></div>
+      <button class="button button-primary" type="submit">Crear mi ruta <span aria-hidden="true">→</span></button>
+      <p class="privacy-note">Tu objetivo solo se usa para preparar esta experiencia.</p>
+    </form>
+  </section>
+</section>
+{{template "shell-foot" .}}
+{{end}}
+
+{{define "goal.html" -}}
+{{template "shell-head" .}}
+<div class="crumb"><a href="/">← Todos mis objetivos</a><span>RUTA DE APRENDIZAJE</span></div>
+<section class="goal-heading">
+  <div>
+    <p class="eyebrow"><span class="eyebrow-line"></span> TU OBJETIVO</p>
+    <h1>Aprender <em>{{.Goal.Domain}}</em></h1>
+    <p class="intro compact">{{.Goal.Purpose}}</p>
+  </div>
+  <div class="time-chip"><span aria-hidden="true">◷</span> {{.Goal.MinutesPerWeek}} min / semana <small>· {{.Goal.Level}}</small></div>
+</section>
+<section class="progress-panel" data-testid="progress">
+  <div class="progress-top"><div><span class="card-kicker">TU AVANCE</span><strong>{{printf "%.0f" (mul .Goal.Progress 100)}}%</strong></div><span class="progress-copy">El dominio se construye paso a paso.</span></div>
+  <div class="progress-track" role="progressbar" aria-label="Progreso del objetivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{printf "%.0f" (mul .Goal.Progress 100)}}"><span style="width: {{printf "%.0f" (mul .Goal.Progress 100)}}%"></span></div>
+</section>
+<section class="map-section" data-testid="concept-map">
+  <div class="section-heading"><div><p class="eyebrow"><span class="eyebrow-line"></span> TU MAPA</p><h2>Una idea lleva a la siguiente.</h2></div><span class="map-count">{{len .Goal.Concepts}} pasos</span></div>
+  <ol class="concept-list">
+    {{range $index, $concept := .Goal.Concepts}}
+    <li class="concept-card">
+      <div class="concept-step"><span>{{printf "%02d" (add $index 1)}}</span>{{if $index}}<span class="step-connector" aria-hidden="true"></span>{{end}}</div>
+      <div class="concept-copy"><h3>{{$concept.Name}}</h3><p>{{$concept.Summary}}</p><span class="concept-status">{{if gt $concept.Mastery 0.0}}PRÁCTICA COMPLETADA{{else}}POR EXPLORAR{{end}}</span></div>
+      <a class="button button-secondary" href="/concepts/{{$concept.ID}}">{{if gt $concept.Mastery 0.0}}Repasar{{else}}Abrir{{end}} <span aria-hidden="true">→</span></a>
+    </li>
+    {{end}}
+  </ol>
+  <p class="prototype-footnote"><span aria-hidden="true">✳</span> Mapa de demostración. La generación personalizada de rutas llegará en una próxima fase.</p>
+</section>
+{{template "shell-foot" .}}
+{{end}}
+
+{{define "lesson.html" -}}
+{{template "shell-head" .}}
+<div class="crumb"><a href="/goals/{{.Goal.ID}}">← Volver a mi mapa</a><span>LECCIÓN</span></div>
+<section class="lesson-layout">
+  <article class="lesson-copy">
+    <p class="eyebrow"><span class="eyebrow-line"></span> {{.Goal.Domain}} · PASO DE APRENDIZAJE</p>
+    <h1>{{.Concept.Name}}</h1>
+    <p class="intro compact">{{.Concept.Summary}}</p>
+    <div class="lesson-body"><span class="lesson-label">PARA EMPEZAR</span><p>{{.Concept.Content}}</p></div>
+    <div class="lesson-nudge"><span aria-hidden="true">↗</span><p>Aprender también es explicar con tus propias palabras. No busques la respuesta perfecta; busca una conexión que tenga sentido para ti.</p></div>
+  </article>
+  <section class="answer-card">
+    <div class="card-kicker"><span class="status-dot"></span> COMPRUEBA LO QUE ENTENDISTE</div>
+    <h2>{{.Exercise.Prompt}}</h2>
+    <form action="/exercises/{{.Exercise.ID}}/attempts" method="post" class="goal-form" data-testid="answer-form">
+      <label for="answer">Tu explicación</label>
+      <textarea id="answer" name="answer" rows="7" maxlength="4000" placeholder="Escribe lo que entendiste y cómo se conecta con tu meta..." required></textarea>
+      <button class="button button-primary" type="submit">Revisar mi respuesta <span aria-hidden="true">→</span></button>
+      <p class="privacy-note">La evaluación de esta versión es una demostración automática simple.</p>
+    </form>
+  </section>
+</section>
+{{template "shell-foot" .}}
+{{end}}
+
+{{define "result.html" -}}
+{{template "shell-head" .}}
+<div class="crumb"><a href="{{.NextURL}}">← Volver a mi mapa</a><span>PRÁCTICA</span></div>
+<section class="result-wrap" data-testid="evaluation-result">
+  <div class="result-icon {{if .Assessment.Correct}}is-correct{{else}}needs-practice{{end}}" aria-hidden="true">{{if .Assessment.Correct}}✓{{else}}↗{{end}}</div>
+  <p class="eyebrow"><span class="eyebrow-line"></span> RESPUESTA EVALUADA</p>
+  <h1>{{if .Assessment.Correct}}Vas construyendo <em>comprensión.</em>{{else}}Cada intento <em>te acerca.</em>{{end}}</h1>
+  <p class="result-explanation">{{.Assessment.Explanation}}</p>
+  <div class="score-card"><div><span class="card-kicker">SEÑAL DE DOMINIO</span><strong>{{printf "%.0f" (mul .Assessment.Score 100)}}<small>%</small></strong></div><span class="provider-tag">{{.Assessment.Provider}} · {{.Assessment.Model}}</span></div>
+  <div class="progress-panel result-progress" data-testid="progress">
+    <div class="progress-top"><div><span class="card-kicker">AVANCE EN {{.Goal.Domain}}</span><strong>{{printf "%.0f" (mul .Goal.Progress 100)}}%</strong></div><span class="progress-copy">Un paso a la vez.</span></div>
+    <div class="progress-track" role="progressbar" aria-label="Progreso del objetivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{printf "%.0f" (mul .Goal.Progress 100)}}"><span style="width: {{printf "%.0f" (mul .Goal.Progress 100)}}%"></span></div>
+  </div>
+  <a class="button button-primary result-button" href="{{.NextURL}}">Continuar mi ruta <span aria-hidden="true">→</span></a>
+  <p class="prototype-footnote">Evaluación de demostración con reglas de texto; no representa una evaluación de IA.</p>
+</section>
+{{template "shell-foot" .}}
+{{end}}
