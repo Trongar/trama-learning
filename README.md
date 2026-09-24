@@ -35,7 +35,7 @@ Los formularios funcionan sin JavaScript; HTMX mejora la navegación cuando est�
 - La ruta y las lecciones son demostrativas: aún no se generan contenidos específicos con IA.
 - La evaluación usa una heurística local etiquetada `mock`, no la API de OpenCode.
 - Los objetivos y el progreso solo viven en memoria; se pierden al reiniciar el proceso.
-- Aún no hay cuentas, persistencia de PocketBase ni sincronización entre dispositivos.
+- Aún no hay cuentas, persistencia de PocketBase ni sincronización entre dispositivos; los datos se pierden al reiniciar.
 - La capa de voz todavía no está conectada.
 
-Por ahora es una prueba funcional de interfaz y flujo, no un servicio listo para producción. Consulta `MVP-ROADMAP.md` para las siguientes fases.
+Es un preview de prueba, no un servicio de producción. No ingreses datos personales o sensibles. Consulta `MVP-ROADMAP.md` para las siguientes fases.
