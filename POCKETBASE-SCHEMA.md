@@ -1,27 +1,15 @@
-# PocketBase schema MVP
+# PocketBase schema: piloto Trama
 
-Se mantienen las 17 colecciones propuestas. `users` debe ser una colección Auth; el resto son Base collections. No se agregan colecciones: una `attempts` guarda tanto respuesta como evaluación; `mastery` es el estado agregado; `sessions/messages` separan continuidad conversacional de contenido pedagógico.
+## Implementado hoy
 
-## Colecciones y función
-- `users`: identidad/auth de PocketBase.
-- `learning_goals`: usuario, dominio, propósito, nivel, minutos y estado.
-- `learning_paths`: versión generada para un objetivo.
-- `topics`: agrupación de conceptos por dominio.
-- `concepts`: nodos enseñables del mapa.
-- `concept_dependencies`: aristas prerequisite (`from`, `to`), únicas.
-- `lessons`: contenido breve y comprobación asociada.
-- `exercises`: prompt, tipo, respuesta esperada y rúbrica.
-- `assessments`: evaluación estructurada, proveedor y modelo, sin secretos.
-- `attempts`: respuesta del usuario y vínculo a assessment.
-- `mastery`: dominio por usuario/concepto.
-- `review_schedule`: próxima revisión, pospuesta a post-MVP salvo lectura.
-- `sources`: fuente y cita, para investigación trazable.
-- `sessions`: continuidad de objetivo.
-- `messages`: texto de sesiones; no sustituye ejercicios.
-- `media_assets`: archivos futuros de lección/voz.
-- `pronunciation_attempts`: capa de voz futura, no bloquea MVP.
+PocketBase 0.40.4 crea la colección Auth `users` del framework. La migración de Trama limita listar/ver/editar/borrar a la propia cuenta y deja abierto el registro público necesario para invitar testers.
 
-## Reglas
-Relations siempre apuntan a IDs; ownership se valida en backend. Campos de proveedor solo contienen metadatos. Nunca guardar API keys, tokens, prompts con secretos ni credenciales.
+`learning_goals` es una colección Base con propietario `user`, dominio, nivel, propósito, minutos/semana, estado, progreso y un campo JSON `path` que guarda los tres pasos de aprendizaje, respuestas y señales de mastery. Las reglas list/view/delete requieren `user = @request.auth.id`; la creación exige `@request.body.user = @request.auth.id`; la edición exige propietario y prohíbe cambiar el campo `user`. El endpoint de intentos exige Auth y vuelve a comprobar el dueño.
 
-Ver `infra/pocketbase-schema.json` para el export declarativo inicial.
+El registro inicial crea una ruta privada “Aprender a aprender” por cada cuenta. Los usuarios no comparten la cuenta ni el registro inicial.
+
+## Decisión de alcance
+
+El contrato de datos original proponía 17 colecciones. Para el piloto no se crearon tablas vacías ni relaciones innecesarias: `learning_paths`, `topics`, `concepts`, `concept_dependencies`, `lessons`, `exercises`, `assessments`, `attempts`, `mastery`, `review_schedule`, `sources`, `sessions`, `messages`, `media_assets` y `pronunciation_attempts` quedan planeadas. Hoy el contenido corto y el estado de mastery viven dentro del JSON `path`; una futura iteración puede normalizarlo mediante migraciones cuando exista una necesidad validada.
+
+`infra/pocketbase-schema.json` distingue las colecciones implementadas de las reservadas. Nunca agregar credenciales o tokens a colecciones de producto.

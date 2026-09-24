@@ -1,22 +1,64 @@
 {
-  "collections": [
-    {"name":"users","type":"auth","purpose":"PocketBase account"},
-    {"name":"learning_goals","type":"base","fields":["user","domain","level","purpose","minutes_per_week","status","path"]},
-    {"name":"learning_paths","type":"base","fields":["goal","version","status","generated_at"]},
-    {"name":"topics","type":"base","fields":["domain","name","description"]},
-    {"name":"concepts","type":"base","fields":["goal","topic","name","description","order"]},
-    {"name":"concept_dependencies","type":"base","fields":["from_concept","to_concept"],"unique":["from_concept","to_concept"]},
-    {"name":"lessons","type":"base","fields":["concept","title","content","exercise"]},
-    {"name":"exercises","type":"base","fields":["lesson","concept","type","prompt","expected_answer","rubric"]},
-    {"name":"assessments","type":"base","fields":["attempt","score","correct","explanation","error_tags","facts","inferences","pedagogy","provider","model"]},
-    {"name":"attempts","type":"base","fields":["user","exercise","answer","assessment"]},
-    {"name":"mastery","type":"base","fields":["user","concept","score","updated_at"],"unique":["user","concept"]},
-    {"name":"review_schedule","type":"base","fields":["user","concept","next_review_at","interval_days"]},
-    {"name":"sources","type":"base","fields":["url","title","publisher","retrieved_at","citation"]},
-    {"name":"sessions","type":"base","fields":["user","goal","status","last_seen_at"]},
-    {"name":"messages","type":"base","fields":["session","role","content","created_at"]},
-    {"name":"media_assets","type":"base","fields":["owner","kind","file","mime_type"]},
-    {"name":"pronunciation_attempts","type":"base","fields":["user","exercise","media_asset","transcript","score","feedback"]}
+  "pocketbaseVersion": "0.40.4",
+  "implemented": [
+    {
+      "name": "users",
+      "type": "auth",
+      "providedBy": "PocketBase",
+      "rules": {
+        "create": "public registration",
+        "list": "id = @request.auth.id",
+        "view": "id = @request.auth.id",
+        "update": "id = @request.auth.id",
+        "delete": "id = @request.auth.id"
+      }
+    },
+    {
+      "name": "learning_goals",
+      "type": "base",
+      "fields": [
+        "user",
+        "domain",
+        "level",
+        "purpose",
+        "minutes_per_week",
+        "status",
+        "progress",
+        "path",
+        "created",
+        "updated"
+      ],
+      "pathStores": ["three starter concepts", "answers", "mastery", "feedback"],
+      "rules": {
+        "list": "user = @request.auth.id",
+        "view": "user = @request.auth.id",
+        "create": "@request.auth.id != '' && @request.body.user = @request.auth.id",
+        "update": "@request.auth.id != '' && user = @request.auth.id && @request.body.user:changed=false",
+        "delete": "user = @request.auth.id"
+      }
+    }
   ],
-  "notes": ["users is an Auth collection", "provider credentials are not fields", "review_schedule, voice and sources are reserved for later MVP phases"]
+  "reservedForLater": [
+    {"name":"learning_paths","fields":["goal","version","status","generated_at"]},
+    {"name":"topics","fields":["domain","name","description"]},
+    {"name":"concepts","fields":["goal","topic","name","description","order"]},
+    {"name":"concept_dependencies","fields":["from_concept","to_concept"],"unique":["from_concept","to_concept"]},
+    {"name":"lessons","fields":["concept","title","content","exercise"]},
+    {"name":"exercises","fields":["lesson","concept","type","prompt","expected_answer","rubric"]},
+    {"name":"assessments","fields":["attempt","score","correct","explanation","error_tags","facts","inferences","pedagogy","provider","model"]},
+    {"name":"attempts","fields":["user","exercise","answer","assessment"]},
+    {"name":"mastery","fields":["user","concept","score","updated_at"],"unique":["user","concept"]},
+    {"name":"review_schedule","fields":["user","concept","next_review_at","interval_days"]},
+    {"name":"sources","fields":["url","title","publisher","retrieved_at","citation"]},
+    {"name":"sessions","fields":["user","goal","status","last_seen_at"]},
+    {"name":"messages","fields":["session","role","content","created_at"]},
+    {"name":"media_assets","fields":["owner","kind","file","mime_type"]},
+    {"name":"pronunciation_attempts","fields":["user","exercise","media_asset","transcript","score","feedback"]}
+  ],
+  "notes": [
+    "PocketBase issues stateless auth tokens; the browser stores the bearer token per tab.",
+    "Every new account receives an independent initial learning route.",
+    "Provider credentials and auth tokens must never be stored in product records.",
+    "The 15 reserved collections are not created in this pilot."
+  ]
 }
